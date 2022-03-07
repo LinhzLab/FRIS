@@ -18,7 +18,7 @@ alpha <- matrix(c(0.9, 0.1, 0.4, 0.2, 0.6, 0.8, 0.5, 0.8, 0.3), p, K)
 sim.example <-sim.example1  # choice of example
 
 dat <- sim.example(sample.len=sample.len, time.len=time.len, 
-                    p=p, sigma=sigma, beta=beta, alpha=alpha)
+                    p=p, sigma=sigma, beta=beta, alpha=alpha, type ='normal')
 time <- dat$time; x <- dat$x; mean <- dat$mean; y <- dat$y; 
 rho1 <- dat$rho1; rho2 <- dat$rho2; rho3 <- dat$rho3; 
 
@@ -48,8 +48,7 @@ residual <- eigenfun.ini$residual
 
 
 ## lambda, alpha
-n.cl <- 20
-scorevar.ini <- get.scorevar.ini(time, x, n.cl, spline.par)
+scorevar.ini <- get.scorevar.ini(time, x, Eta.ini, Beta.ini, spline.par)
 Alpha.ini <- scorevar.ini$alpha.ini
 Lambda.ini <- scorevar.ini$lambda.ini
 Zeta.ini <- scorevar.ini$zeta.ini
