@@ -140,44 +140,75 @@ get.eigenfun.ini <- function(K, spline.par){
 
 #### get initial value of score variance functions
 
-get.scorevar.ini <- function(time, x, n.cl, spline.par){
+get.scorevar.ini <- function(time, x, eta.ini, beta.ini, spline.par, sigma=1, threshold = 0.1, 
+                             max.iter = 1000){
   rangeval.u1 <- spline.par$rangeval.u1
   nk.u1 <- spline.par$nk.u1
   norder.u1 <- spline.par$norder.u1
   K <- eigenfun.ini$K
   eigenfun <- eigenfun.ini$eigenfun
   grids <- eigenfun.ini$grids
-  ## cluster
-  kmean <- kmeans(x, n.cl)
-  coef<-NULL
-  for (factor in 1:n.cl) {
-    index <- which(kmean$cluster == factor)
-    coef0 <- matrix(0, length(index), K)
-    n<-1
-    for (i in index) {
-      x.cl <- NULL
-      for (k in 1:K) {
-        x.cl <- cbind(x.cl, eigenfun[k,ceiling(length(grids) * time[[i]])])
-      }
-      coef0[n,] <- lm(t(residual[[i]]) ~ x.cl - 1)$coef
-      n<-n+1
-    }
-    coef0<-apply(coef0, 2, sd)
-    coef<-rbind(coef,t(matrix(rep(coef0,length(index)), K, length(index))))
-  }
-  index<-NULL
-  for (factor in 1:n.cl) {
-    index<-c(index,which(kmean$cluster == factor))
-  }
   
+  Zeta <- matrix(rnorm(sample.len*K,0,10),sample.len,K)
+  eta <- eta.ini
+  gamma <- gamma.ini
+  rangeval.t = spline.par$rangeval.t; norder.t = spline.par$norder.t; nk.t = spline.par$nk.t
+  
+  get.bt <- get.spline.t(time, rangeval.t, norder.t, nk.t)
+  bt <- get.bt$bt
+  get.bu <- get.spline.u(u = x %*% beta.ini, rangeval.u = spline.par$rangeval.u,
+                         norder.u = spline.par$norder.u, nk.u = spline.par$nk.u)
+  bu.0 <- get.bu$bu.0
+  Bn <- list(); mean.0 <- list()
+  for (i in 1:sample.len) { 
+    Bn[[i]] <- kronecker(t(bt[[i]]), bu.0[i, ])
+    mean.0[[i]] <- t(gamma) %*% Bn[[i]] 
+    }
+  
+  err <- 1
+  iter <- 1
+  while (err > threshold && iter < max.iter) {
+    zeta <- Zeta
+    sigma.ni <- list()
+    for (i in 1:sample.len) {
+      cov <- 0
+      for (k in 1:K) {
+        cov <- cov + (zeta[i,k])^2*eta[,k]%*%t(eta[,k])
+      }
+      sigma.ni[[i]] <- bt[[i]] %*% cov %*% t(bt[[i]]) + diag(sigma, time.len[i], time.len[i]) 
+    }
+
+    #####zeta
+    r<-1
+    Sigma_0<-list()
+    for (i in 1:sample.len) {
+      Sigma_0[[i]]<-solve(sigma.ni[[i]])/2-solve(sigma.ni[[i]])%*%
+        t(y[[i]]-  mean.0[[i]])%*%(y[[i]]-  mean.0[[i]])%*%
+        solve(sigma.ni[[i]])/2
+    }
+    
+    
+    der_H<-matrix(0,sample.len,K)
+    for (k in 1:K) {
+      for (i in 1:sample.len) {
+        der_H[i,k]<-2*t(eta[,k])%*%t(bt[[i]])%*%Sigma_0[[i]]%*%
+          bt[[i]]%*%eta[,k]*zeta[i,k]
+      }
+    }
+    lambda0 <-0.1
+    Zeta <- (zeta-r*der_H)/(1+lambda0*r)
+    err <- c(err, max(abs(Zeta-zeta)))
+    iter <- iter + 1  
+  }
+
   ## updata alpha
   alpha <- matrix(NA, p, K)
   for (k in 1:K) {
-    alpha[ ,k] <- coef(mave(coef[ ,k] ~ x[index, ]),1)
+    alpha[ ,k] <- coef(mave(Zeta[ ,k] ~ x),1)
   }
-
+  
   ## updat lambda
-  uu <- x[index, ] %*% alpha
+  uu <- x %*% alpha
   breaks.u1 <- c(rangeval.u1[1], quantile(uu, seq(0, 1, length = nk.u1)[-c(1, nk.u1)]), 
                  rangeval.u1[2])
   nbisis.u1 <- norder.u1 + nk.u1 - 2
@@ -185,11 +216,10 @@ get.scorevar.ini <- function(time, x, n.cl, spline.par){
   zeta <- matrix(NA, sample.len, K)
   for (k in 1:K) {
     get.bu1 <- bsplineS(uu[ ,k], breaks.u1, norder.u1)
-    lambda[ ,k] <- lm(coef[ ,k] ~ get.bu1 - 1)$coef
-    zeta[ ,k] <- (get.bu1 %*% lambda[ ,k])^2
+    lambda[ ,k] <- lm(Zeta[ ,k] ~ get.bu1 - 1)$coef
   }
   
-  return(list(alpha.ini = alpha, lambda.ini = lambda, zeta.ini = zeta))
+  return(list(alpha.ini = alpha, lambda.ini = lambda, zeta.ini = Zeta))
 }
 
 #### get initial value of sigma
