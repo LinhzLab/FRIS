@@ -3,7 +3,7 @@
 ########################
 
 
-sim.example1 <- function(sample.len, time.len, p, sigma, beta, alpha){
+sim.example1 <- function(sample.len, time.len, p, sigma, beta, alpha, type){
   
   # sample.len: sample sizes 
   # time.len: number of time points for each individual
@@ -36,9 +36,9 @@ sim.example1 <- function(sample.len, time.len, p, sigma, beta, alpha){
   for (i in 1:sample.len) {mean[[i]] <- mu(time[[i]], u[[i]])}
     
   # true covariance function 
-  rho1 <- function(x) {(1 - cos(x*pi))*10}
-  rho2 <- function(x) {(1 - cos(x*pi))}
-  rho3 <- function(x) {(1 - cos(x*pi))/10}
+  rho1 <- function(x) {x^2*ifelse(x<0,1,0)*10}
+  rho2 <- function(x) {x^2*ifelse(x<0,1,0)}
+  rho3 <- function(x) {x^2*ifelse(x<0,1,0)/10}
   
   # covariance function of each individual
   Sigma <- function(i) {
@@ -49,15 +49,30 @@ sim.example1 <- function(sample.len, time.len, p, sigma, beta, alpha){
   }
 
   # generate response function
-  y <- list()
-  for (i in 1:sample.len) {y[[i]] <- mvrnorm(1, mean[[i]], Sigma(i))}
-  
+  if (type == 'normal') {
+  #normal
+    y <- list()
+    for (i in 1:sample.len) {y[[i]] <- mvrnorm(1, mean[[i]], Sigma(i))}
+  }
+  if (type == 'mixed normal'){
+  #mixed normal
+    y1 <- list()
+    y2 <- list()
+    pr <- list()
+    y<-list()
+    for (i in 1:sample.len) {
+     y1[[i]] <- mvrnorm(1, mean[[i]] + 0.5, Sigma(i))
+     y2[[i]] <- mvrnorm(1, mean[[i]] - 0.5, Sigma(i))
+     pr[[i]] <- rbinom(1, 1, 1/2)
+     y[[i]] <- pr[[i]] * y1[[i]] + (1 - pr[[i]]) * y2[[i]]
+    }
+  }
   return(list(time=time, x=x, y=y, mean=mean, 
               rho1=rho1(uu[,1]), rho2=rho2(uu[,2]), rho3=rho3(uu[,3])))
 }
 
 
-sim.example2 <- function(sample.len, time.len, p, sigma, beta, alpha){
+sim.example3 <- function(sample.len, time.len, p, sigma, beta, alpha){
   
   # sample_len: sample sizes
   # time_len: number of time points
@@ -109,7 +124,7 @@ sim.example2 <- function(sample.len, time.len, p, sigma, beta, alpha){
 }
 
 
-sim.example3 <- function(sample.len, time.len, p, beta, alpha){
+sim.example4 <- function(sample.len, time.len, p, beta, alpha){
   
   # sample_len: sample sizes
   # time_len: number of time points
@@ -169,4 +184,62 @@ sim.example3 <- function(sample.len, time.len, p, beta, alpha){
   
   return(list(time=time, x=x, mean=mean, y=y))
 }
+
+sim.example5 <- function(sample.len, time.len, p, sigma, beta1, beta2, 
+                         alpha1, alpha2){
+  
+  # sample.len: sample sizes 
+  # time.len: number of time points for each individual
+  # p: dimension of predictors
+  # sigma: sd of error (response)
+  # beta: index coefficients in mean function with norm 1
+  # alpha: index coefficients in covariance function with norm 1
+  
+  # generate time points
+  t <- runif(sum(time.len))
+  time.index <- c(0,cumsum(time.len))
+  time <- list()
+  for (i in 1:sample.len) {time[[i]] <- t[(time.index[i]+1):time.index[i+1]]}
+  
+  # eigenfunctions
+  eigenfun1 <- function(t) {cos(pi * t) * sqrt(2)}
+  eigenfun2 <- function(t) {sin(pi * t) * sqrt(2)}
+  eigenfun3 <- function(t) {cos(3 * pi * t) * sqrt(2)}
+  
+  
+  # generate predictor data
+  x <- matrix(runif(p * sample.len, -1, 1), sample.len, p)
+  x <- apply(x, 2, scale)
+  u1 <- x %*% beta1
+  u2 <- x %*% beta2
+  uu1 <- x %*% alpha1
+  uu2 <- x %*% alpha2
+  
+  # true mean function 
+  mu <- function(t, u1, u2) {10 * t * ( exp(u1) + exp(u2))}
+  mean <- list()
+  for (i in 1:sample.len) {mean[[i]] <- mu(time[[i]], u1[[i]], u2[[i]])}
+  
+  # true covariance function 
+  rho1 <- function(x) {x^2*ifelse(x<0,1,0)*10}
+  rho2 <- function(x) {x^2*ifelse(x<0,1,0)}
+  rho3 <- function(x) {x^2*ifelse(x<0,1,0)/10}
+  
+  # covariance function of each individual
+  Sigma <- function(i) {
+    eigenfun1(time[[i]]) %*% t(eigenfun1(time[[i]])) * rho1((u1*u2)[i,])+
+      eigenfun2(time[[i]]) %*% t(eigenfun2(time[[i]])) * rho2((u1*u2)[i,])+ 
+      eigenfun3(time[[i]]) %*% t(eigenfun3(time[[i]])) * rho3((u1*u2)[i,])+
+      diag(sigma, time.len[i], time.len[i])
+  }
+  
+  # generate response function
+  y <- list()
+  for (i in 1:sample.len) {y[[i]] <- mvrnorm(1, mean[[i]], Sigma(i))}
+  
+  return(list(time=time, x=x, y=y, mean=mean, 
+              rho1=rho1(uu[,1]), rho2=rho2(uu[,2]), rho3=rho3(uu[,3])))
+}
+
+
 
